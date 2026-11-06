@@ -131,8 +131,8 @@ app.use('/api', (req, _res, next) => {
 });
 
 // 5. Hardened Server-Side Staff Authentication with Constant-Time Comparison & Brute-Force Lockout
-const STAFF_USERNAME = process.env.STAFF_USERNAME || 'admin';
-const STAFF_PASSWORD = process.env.STAFF_PASSWORD || 'admin123';
+const STAFF_USERNAME = (process.env.STAFF_USERNAME || 'sakhuwananrkattigaupalika@gmail.com').toLowerCase();
+const STAFF_PASSWORD = process.env.STAFF_PASSWORD || '';
 
 const safeCompare = (a: string, b: string): boolean => {
   const bufA = Buffer.from(a, 'utf8');

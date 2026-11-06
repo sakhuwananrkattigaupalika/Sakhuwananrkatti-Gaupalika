@@ -293,80 +293,112 @@ export async function testSupabaseConnection(): Promise<{ success: boolean; url:
 }
 
 /**
- * Staff Login via Supabase Auth or municipal administrator credentials
+ * Staff Login exclusively via real Supabase Auth
  */
 export async function loginStaffWithSupabase(
   identifier: string,
   password: string
 ): Promise<{ success: boolean; user?: { username: string; email?: string; role: string }; error?: string }> {
-  const cleanId = identifier.trim().toLowerCase();
+  const cleanEmail = identifier.trim().toLowerCase();
   const cleanPass = password.trim();
 
-  // 1. If identifier is an email, try Supabase Auth signInWithPassword
-  if (cleanId.includes('@')) {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanId,
-        password: cleanPass,
-      });
-
-      if (!error && data?.user) {
-        const userRole = (data.user.user_metadata?.role as string) || 'admin';
-        return {
-          success: true,
-          user: {
-            username: data.user.email?.split('@')[0] || cleanId,
-            email: data.user.email,
-            role: userRole,
-          },
-        };
-      }
-    } catch (e) {
-      console.warn('Supabase auth attempt notice:', e);
-    }
+  if (!cleanEmail || !cleanPass) {
+    return {
+      success: false,
+      error: 'कृपया आफ्नो आधिकारिक इमेल र पासवर्ड प्रविष्ट गर्नुहोस्।',
+    };
   }
 
-  // 2. Also accept official municipal email or admin credentials directly
-  if (
-    cleanId === 'admin' ||
-    cleanId === 'sakhuwananrkattigaupalika@gmail.com' ||
-    cleanId.startsWith('sakhuwananrkattigaupalika')
-  ) {
-    if (cleanPass === 'admin123' || cleanPass === 'admin') {
+  // 1. Authenticate with Supabase Auth
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password: cleanPass,
+    });
+
+    if (error) {
+      if (error.message.includes('Invalid login credentials')) {
+        return {
+          success: false,
+          error: 'अमान्य इमेल वा पासवर्ड! कृपया तपाईंको Supabase खाताको सही इमेल र पासवर्ड प्रविष्ट गर्नुहोस्।',
+        };
+      }
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    if (data?.user) {
+      const userRole = (data.user.user_metadata?.role as string) || 'admin';
       return {
         success: true,
         user: {
-          username: cleanId === 'admin' ? 'admin' : 'गाउँपालिका अधिकृत',
-          email: cleanId.includes('@') ? cleanId : 'sakhuwananrkattigaupalika@gmail.com',
+          username: data.user.email?.split('@')[0] || cleanEmail,
+          email: data.user.email,
+          role: userRole,
+        },
+      };
+    }
+  } catch (e) {
+    console.error('Supabase auth error:', e);
+    return {
+      success: false,
+      error: 'Supabase प्रमाणीकरणमा समस्या आयो। कृपया इन्टरनेट जडान जाँच गर्नुहोस्।',
+    };
+  }
+
+  return {
+    success: false,
+    error: 'प्रमाणीकरण असफल भयो। कृपया आफ्नो सही इमेल र पासवर्ड प्रविष्ट गर्नुहोस्।',
+  };
+}
+
+/**
+ * Register / Sign up new staff in Supabase Auth
+ */
+export async function signUpStaffWithSupabase(
+  email: string,
+  password: string
+): Promise<{ success: boolean; user?: { username: string; email?: string; role: string }; error?: string; message?: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPass = password.trim();
+
+  if (cleanPass.length < 6) {
+    return { success: false, error: 'पासवर्ड कम्तिमा ६ अक्षरको हुनुपर्दछ।' };
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password: cleanPass,
+      options: {
+        data: {
+          role: 'admin',
+        },
+      },
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (data?.session && data?.user) {
+      return {
+        success: true,
+        user: {
+          username: data.user.email?.split('@')[0] || cleanEmail,
+          email: data.user.email,
           role: 'admin',
         },
       };
     }
+
+    return {
+      success: true,
+      message: 'खाता सफलतापूर्वक सिर्जना भयो! अब आफ्नो पासवर्ड प्रयोग गरी लगइन गर्नुहोस्।',
+    };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'खाता सिर्जना गर्न सकिएन।' };
   }
-
-  // 3. Check server-side /api/auth/login if backend is active
-  try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: cleanId, password: cleanPass }),
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.authenticated) {
-        return {
-          success: true,
-          user: {
-            username: cleanId,
-            role: json.role || 'admin',
-          },
-        };
-      }
-    }
-  } catch {}
-
-  return {
-    success: false,
-    error: 'अमान्य इमेल वा पासवर्ड! कृपया सही विवरण प्रविष्ट गर्नुहोस्। (उदा: sakhuwananrkattigaupalika@gmail.com वा admin, पासवर्ड: admin123)',
-  };
 }

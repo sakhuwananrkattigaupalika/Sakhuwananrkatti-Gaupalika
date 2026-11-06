@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Mail, User, KeyRound, AlertCircle, ShieldCheck, ArrowRight, Eye, EyeOff, Database } from 'lucide-react';
+import { Lock, Mail, KeyRound, AlertCircle, ShieldCheck, ArrowRight, Eye, EyeOff, Database, CheckCircle, UserPlus, LogIn } from 'lucide-react';
 import { Language } from '../types';
 import { translations } from '../i18n/translations';
 import { CivicSpinner, CivicActionLoader } from './LoadingAnimation';
-import { loginStaffWithSupabase, testSupabaseConnection } from '../utils/supabaseClient';
+import { loginStaffWithSupabase, signUpStaffWithSupabase, testSupabaseConnection } from '../utils/supabaseClient';
 import emblemSvg from '../assets/emblem-of-nepal.svg';
 
 interface StaffLoginViewProps {
@@ -17,12 +17,14 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
   onLoginSuccess,
   onCancel,
 }) => {
-  const [identifier, setIdentifier] = useState('sakhuwananrkattigaupalika@gmail.com');
+  const [email, setEmail] = useState('sakhuwananrkattigaupalika@gmail.com');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
+  const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
 
   const t = translations[lang] || translations.ne;
 
@@ -33,49 +35,57 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
     });
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setSuccessMsg(null);
 
-    const cleanId = identifier.trim().toLowerCase();
+    const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
 
-    if (!cleanId || !cleanPass) {
-      setErrorMsg('कृपया इमेल र पासवर्ड दुवै प्रविष्ट गर्नुहोस्।');
+    if (!cleanEmail || !cleanPass) {
+      setErrorMsg('कृपया आफ्नो इमेल र पासवर्ड दुवै प्रविष्ट गर्नुहोस्।');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // Authenticate via Supabase Auth or municipal credentials
-      const result = await loginStaffWithSupabase(cleanId, cleanPass);
-      setIsLoading(false);
+      if (authMode === 'register') {
+        const result = await signUpStaffWithSupabase(cleanEmail, cleanPass);
+        setIsLoading(false);
+        if (result.success) {
+          if (result.user) {
+            onLoginSuccess({
+              username: result.user.username,
+              role: result.user.role || 'admin',
+            });
+          } else {
+            setSuccessMsg(result.message || 'तपाईंको Supabase पासवर्ड सुरक्षित रूपमा सेट भयो! अब लगइन गर्नुहोस्।');
+            setAuthMode('signin');
+          }
+        } else {
+          setErrorMsg(result.error || 'खाता सिर्जना गर्न सकिएन।');
+        }
+      } else {
+        // Real Supabase Authentication
+        const result = await loginStaffWithSupabase(cleanEmail, cleanPass);
+        setIsLoading(false);
 
-      if (result.success && result.user) {
-        onLoginSuccess({
-          username: result.user.username,
-          role: result.user.role || 'admin',
-        });
-      } else {
-        setErrorMsg(
-          result.error || 'अमान्य इमेल वा पासवर्ड! कृपया सही विवरण प्रविष्ट गर्नुहोस्।'
-        );
+        if (result.success && result.user) {
+          onLoginSuccess({
+            username: result.user.username,
+            role: result.user.role || 'admin',
+          });
+        } else {
+          setErrorMsg(
+            result.error || 'अमान्य इमेल वा पासवर्ड! कृपया आफ्नो सही Supabase पासवर्ड प्रविष्ट गर्नुहोस्।'
+          );
+        }
       }
-    } catch {
+    } catch (err) {
       setIsLoading(false);
-      // Fallback
-      if (
-        (cleanId === 'admin' || cleanId === 'sakhuwananrkattigaupalika@gmail.com') &&
-        (cleanPass === 'admin123' || cleanPass === 'admin')
-      ) {
-        onLoginSuccess({
-          username: 'admin',
-          role: 'admin',
-        });
-      } else {
-        setErrorMsg('अमान्य इमेल वा पासवर्ड! कृपया सही विवरण प्रविष्ट गर्नुहोस्।');
-      }
+      setErrorMsg('प्रमाणीकरणमा समस्या आयो। कृपया इन्टरनेट र Supabase जडान जाँच गर्नुहोस्।');
     }
   };
 
@@ -101,7 +111,7 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
 
           <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-900/80 border border-blue-700/60 text-[11px] font-bold text-teal-300">
             <Lock className="w-3.5 h-3.5 text-amber-400" />
-            <span>कर्मचारी तथा अधिकृत सुरक्षित लगइन</span>
+            <span>Supabase Auth — सुरक्षित कर्मचारी लगइन</span>
           </div>
         </div>
 
@@ -123,22 +133,50 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
           )}
         </div>
 
+        {/* Switcher Tab: Sign In vs First-time Set Password */}
+        <div className="grid grid-cols-2 p-1.5 bg-slate-100/90 border-b border-slate-200 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => { setAuthMode('signin'); setErrorMsg(null); setSuccessMsg(null); }}
+            className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition ${
+              authMode === 'signin'
+                ? 'bg-white text-[#163A63] shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <LogIn className="w-3.5 h-3.5 text-teal-600" />
+            <span>लगइन (Sign In)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setAuthMode('register'); setErrorMsg(null); setSuccessMsg(null); }}
+            className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition ${
+              authMode === 'register'
+                ? 'bg-white text-[#163A63] shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <UserPlus className="w-3.5 h-3.5 text-amber-600" />
+            <span>नयाँ पासवर्ड सेट (Set Password)</span>
+          </button>
+        </div>
+
         {/* Form Body */}
         <div className="p-6 sm:p-8 space-y-5">
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                आधिकारिक इमेल वा प्रयोगकर्ता नाम (Email or Username)
+                आधिकारिक इमेल (Official Email)
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
-                  type="text"
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="sakhuwananrkattigaupalika@gmail.com वा admin"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="sakhuwananrkattigaupalika@gmail.com"
                   required
-                  autoComplete="username"
+                  autoComplete="email"
                   className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#163A63] focus:border-transparent font-medium"
                 />
               </div>
@@ -146,7 +184,7 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                गोप्य पासवर्ड (Password)
+                {authMode === 'register' ? 'तपाईंको नयाँ गोप्य पासवर्ड (New Password)' : 'गोप्य पासवर्ड (Password)'}
               </label>
               <div className="relative">
                 <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -154,9 +192,9 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={authMode === 'register' ? 'कम्तिमा ६ अक्षरको पासवर्ड राख्नुहोस्' : 'तपाईंको वास्तविक पासवर्ड'}
                   required
-                  autoComplete="current-password"
+                  autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
                   className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#163A63] focus:border-transparent font-medium"
                 />
                 <button
@@ -167,12 +205,24 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {authMode === 'register' && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  * यो पासवर्ड सिधै तपाईंको Supabase Authentication डाटाबेसमा सुरक्षित रूपमा सेभ हुनेछ।
+                </p>
+              )}
             </div>
 
             {errorMsg && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2 animate-in fade-in">
                 <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                 <p className="leading-snug">{errorMsg}</p>
+              </div>
+            )}
+
+            {successMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-800 flex items-start gap-2 animate-in fade-in">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <p className="leading-snug">{successMsg}</p>
               </div>
             )}
 
@@ -184,28 +234,25 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
               {isLoading ? (
                 <>
                   <CivicSpinner size="sm" color="border-amber-400" />
-                  <span>प्रमाणीकरण हुँदैछ...</span>
+                  <span>{authMode === 'register' ? 'पासवर्ड सेभ हुँदैछ...' : 'प्रमाणीकरण हुँदैछ...'}</span>
                 </>
               ) : (
                 <>
-                  <span>सुरक्षित लगइन गर्नुहोस्</span>
+                  <span>{authMode === 'register' ? 'Supabase मा नयाँ पासवर्ड सेट गर्नुहोस्' : 'वास्तविक इमेल/पासवर्डबाट लगइन'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-          {/* Quick Authorized Credentials Hint */}
-          <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-3 text-xs text-blue-900 space-y-1">
-            <p className="font-bold flex items-center gap-1 text-[#163A63]">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>अधिकृत लगइन विवरण (Authorized Credentials):</span>
+          {/* Real Supabase Security Note */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700 space-y-1">
+            <p className="font-bold flex items-center gap-1.5 text-[#163A63]">
+              <ShieldCheck className="w-4 h-4 text-teal-600" />
+              <span>वास्तविक Supabase सुरक्षा (Real Authentication):</span>
             </p>
-            <p className="text-slate-600">
-              इमेल: <span className="font-mono font-bold text-slate-900 select-all">sakhuwananrkattigaupalika@gmail.com</span> वा <span className="font-mono font-bold text-slate-900 select-all">admin</span>
-            </p>
-            <p className="text-slate-600">
-              पासवर्ड: <span className="font-mono font-bold text-slate-900 select-all">admin123</span>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              अब कुनै पनि पूर्वनिर्धारित वा डमी पासवर्ड छैन। तपाईंको आधिकारिक इमेल (<span className="font-mono font-bold text-slate-900">sakhuwananrkattigaupalika@gmail.com</span>) र तपाईंले रोज्नुभएको वास्तविक पासवर्डबाट मात्र लगइन हुनेछ।
             </p>
           </div>
 
@@ -226,8 +273,8 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
       {/* Staff Authentication Loading Animation */}
       <CivicActionLoader
         isOpen={isLoading}
-        title="कर्मचारी प्रमाणीकरण हुँदैछ..."
-        stepMessage="सुरक्षित प्रणाली प्रमाणीकरण र अनुमति जाँच..."
+        title={authMode === 'register' ? 'नयाँ पासवर्ड दर्ता हुँदैछ...' : 'Supabase प्रमाणीकरण हुँदैछ...'}
+        stepMessage="सुरक्षित Supabase Authentication जाँच..."
       />
     </div>
   );
