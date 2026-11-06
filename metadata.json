@@ -1,0 +1,10 @@
+{
+  "name": "Remix Sakhuwanankarkatti Citizen Grievance \u0026 Chairperson Portal",
+  "description": "Citizen grievance tracking, chairperson contact, and appointment scheduling system for Sakhuwanankarkatti Rural Municipality, optimized for iOS, Android and web.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
