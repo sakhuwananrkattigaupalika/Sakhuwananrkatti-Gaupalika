@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Complaint, Language, ComplaintMessage } from '../types';
-import { LocalMunicipalityDB } from '../utils/storage';
+import { MunicipalityAPI } from '../utils/api';
 import { formatNepalDateTime } from '../utils/nepalTime';
 import { translations } from '../i18n/translations';
 import { ReceiptModal } from './ReceiptModal';
@@ -70,24 +70,13 @@ export const CitizenTrackView: React.FC<CitizenTrackViewProps> = ({
       // Allow brief moment for smooth animated civic scan
       await new Promise((r) => setTimeout(r, 400));
 
-      const all = LocalMunicipalityDB.getComplaints();
-      let found = all.find((c) => c.referenceNumber.toUpperCase() === query);
-
-      if (!found) {
-        try {
-          const res = await fetch(`/api/complaints/${query}`);
-          if (res.ok) {
-            found = await res.json();
-          }
-        } catch (err) {
-          console.warn('Server lookup error', err);
-        }
-      }
+      // Look up directly in Supabase (falls back to offline cache)
+      const found = await MunicipalityAPI.getComplaintByReference(query);
 
       if (found) {
         setActiveComplaint(found);
         // Strictly get citizen-scoped messages (internal notes are excluded!)
-        const citizenMsgs = LocalMunicipalityDB.getScopedMessages(found.id, 'citizen');
+        const citizenMsgs = await MunicipalityAPI.getMessages(found.id, 'citizen');
         setMessages(citizenMsgs);
       } else {
         setActiveComplaint(null);
@@ -98,14 +87,14 @@ export const CitizenTrackView: React.FC<CitizenTrackViewProps> = ({
     }
   };
 
-  const handleSendMoreInfo = (e: React.FormEvent) => {
+  const handleSendMoreInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeComplaint || !moreInfoText.trim()) return;
 
     setIsSubmittingInfo(true);
 
     // Citizen post public reply to official case
-    const newMsg = LocalMunicipalityDB.addMessage(
+    const newMsg = await MunicipalityAPI.addMessage(
       activeComplaint.id,
       'citizen',
       activeComplaint.citizenName || 'नागरिक',

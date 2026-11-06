@@ -20,6 +20,38 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapComplaintRow(row: any): Complaint {
+  return {
+    id: row.id,
+    referenceNumber: row.reference_number || row.referenceNumber,
+    title: row.title,
+    category: row.category,
+    wardNumber: Number(row.ward_number || row.wardNumber || 1),
+    landmark: row.landmark || '',
+    description: row.description || '',
+    preferredReplyLanguage: row.preferred_reply_language || row.preferredReplyLanguage || 'ne',
+    contactMethod: row.contact_method || row.contactMethod || 'phone',
+    citizenName: row.citizen_name || row.citizenName,
+    citizenPhone: row.citizen_phone || row.citizenPhone,
+    citizenEmail: row.citizen_email || row.citizenEmail,
+    isConfidentialIdentity: Boolean(row.is_confidential_identity ?? row.isConfidentialIdentity),
+    isChairpersonAttentionRequested: Boolean(row.is_chairperson_attention_requested ?? row.isChairpersonAttentionRequested),
+    isConflictOfInterest: Boolean(row.is_conflict_of_interest ?? row.isConflictOfInterest),
+    status: (row.status as ComplaintStatus) || 'Submitted',
+    assignedDepartment: row.assigned_department || row.assignedDepartment,
+    assignedWard: row.assigned_ward ? Number(row.assigned_ward) : undefined,
+    assignedOfficerName: row.assigned_officer_name || row.assignedOfficerName,
+    attachments: Array.isArray(row.attachments) ? row.attachments : [],
+    statusHistory: Array.isArray(row.status_history || row.statusHistory)
+      ? (row.status_history || row.statusHistory)
+      : [],
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+    updatedAt: row.updated_at || row.updatedAt || new Date().toISOString(),
+    slaTargetDays: Number(row.sla_target_days || row.slaTargetDays || 7),
+  };
+}
+
 /**
  * Fetch all complaints from Supabase
  */
@@ -37,36 +69,31 @@ export async function getComplaintsFromSupabase(): Promise<Complaint[] | null> {
 
     if (!data) return null;
 
-    return data.map((row) => ({
-      id: row.id,
-      referenceNumber: row.reference_number || row.referenceNumber,
-      title: row.title,
-      category: row.category,
-      wardNumber: Number(row.ward_number || row.wardNumber || 1),
-      landmark: row.landmark || '',
-      description: row.description || '',
-      preferredReplyLanguage: row.preferred_reply_language || row.preferredReplyLanguage || 'ne',
-      contactMethod: row.contact_method || row.contactMethod || 'phone',
-      citizenName: row.citizen_name || row.citizenName,
-      citizenPhone: row.citizen_phone || row.citizenPhone,
-      citizenEmail: row.citizen_email || row.citizenEmail,
-      isConfidentialIdentity: Boolean(row.is_confidential_identity ?? row.isConfidentialIdentity),
-      isChairpersonAttentionRequested: Boolean(row.is_chairperson_attention_requested ?? row.isChairpersonAttentionRequested),
-      isConflictOfInterest: Boolean(row.is_conflict_of_interest ?? row.isConflictOfInterest),
-      status: (row.status as ComplaintStatus) || 'Submitted',
-      assignedDepartment: row.assigned_department || row.assignedDepartment,
-      assignedWard: row.assigned_ward ? Number(row.assigned_ward) : undefined,
-      assignedOfficerName: row.assigned_officer_name || row.assignedOfficerName,
-      attachments: Array.isArray(row.attachments) ? row.attachments : [],
-      statusHistory: Array.isArray(row.status_history || row.statusHistory)
-        ? (row.status_history || row.statusHistory)
-        : [],
-      createdAt: row.created_at || row.createdAt || new Date().toISOString(),
-      updatedAt: row.updated_at || row.updatedAt || new Date().toISOString(),
-      slaTargetDays: Number(row.sla_target_days || row.slaTargetDays || 7),
-    }));
+    return data.map(mapComplaintRow);
   } catch (err) {
     console.warn('Supabase fetch exception:', err);
+    return null;
+  }
+}
+
+/**
+ * Look up a single complaint by its reference number (e.g. SKK-2026-XXXXXXXX)
+ */
+export async function getComplaintByReferenceFromSupabase(ref: string): Promise<Complaint | null> {
+  try {
+    const { data, error } = await supabase
+      .from('complaints')
+      .select('*')
+      .eq('reference_number', ref.trim().toUpperCase())
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Supabase complaint lookup error:', error.message);
+      return null;
+    }
+    return data ? mapComplaintRow(data) : null;
+  } catch (err) {
+    console.warn('Supabase complaint lookup exception:', err);
     return null;
   }
 }
