@@ -467,7 +467,7 @@ export class LocalMunicipalityDB {
     }));
 
     const newComplaint: Complaint = {
-      id: `c-${Date.now()}`,
+      id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       referenceNumber,
       title: data.title,
       category: data.category,
@@ -622,7 +622,7 @@ export class LocalMunicipalityDB {
     isInternalNote: boolean
   ): ComplaintMessage {
     const newMessage: ComplaintMessage = {
-      id: `msg-${Date.now()}`,
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       complaintId,
       senderRole,
       senderName,
@@ -669,7 +669,7 @@ export class LocalMunicipalityDB {
     const nowIso = new Date().toISOString();
 
     const newApt: Appointment = {
-      id: `apt-${Date.now()}`,
+      id: `apt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       referenceNumber,
       citizenName: data.citizenName,
       citizenPhone: data.citizenPhone,
