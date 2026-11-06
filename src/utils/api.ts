@@ -1,7 +1,7 @@
 /**
  * API Client for Sakhuwanankarkatti Municipal System
- * Synchronizes complaints, photo attachments, messages, and appointments
- * across all client devices and the persistent backend.
+ * Seamlessly integrates Supabase Cloud Database with LocalStorage offline caching
+ * and optional Node.js Express backend proxy.
  */
 
 import {
@@ -14,30 +14,52 @@ import {
   UserRole,
 } from '../types';
 import { LocalMunicipalityDB } from './storage';
+import {
+  getComplaintsFromSupabase,
+  saveComplaintToSupabase,
+  updateComplaintStatusInSupabase,
+  getMessagesFromSupabase,
+  saveMessageToSupabase,
+  getAppointmentsFromSupabase,
+  saveAppointmentToSupabase,
+} from './supabaseClient';
 
 export const API_BASE = '/api';
 
 export class MunicipalityAPI {
   /**
-   * Fetch all complaints from server, fall back to LocalStorage if offline
+   * Fetch all complaints: Supabase Cloud -> Server API -> Local Cache
    */
   static async getComplaints(): Promise<Complaint[]> {
+    // 1. Try Supabase Cloud Database first
+    try {
+      const supabaseComplaints = await getComplaintsFromSupabase();
+      if (supabaseComplaints && supabaseComplaints.length > 0) {
+        LocalMunicipalityDB.saveComplaints(supabaseComplaints);
+        return supabaseComplaints;
+      }
+    } catch (err) {
+      console.warn('Supabase fetch error, trying backend server:', err);
+    }
+
+    // 2. Try Node/Express server backend if running
     try {
       const res = await fetch(`${API_BASE}/complaints`);
       if (res.ok) {
         const complaints: Complaint[] = await res.json();
-        // Update local cache
         LocalMunicipalityDB.saveComplaints(complaints);
         return complaints;
       }
-    } catch (err) {
-      console.warn('Backend API unreachable, using local cache:', err);
+    } catch {
+      // Offline or static host (Netlify / GitHub Pages)
     }
+
+    // 3. Fall back to persistent Local Cache
     return LocalMunicipalityDB.getComplaints();
   }
 
   /**
-   * Submit new complaint with photo attachments (Base64 data URLs)
+   * Submit new complaint with photo attachments
    */
   static async submitComplaint(data: {
     title: string;
@@ -60,29 +82,24 @@ export class MunicipalityAPI {
       dataUrl?: string;
     }>;
   }): Promise<Complaint> {
+    // 1. Register in Local Database immediately (guarantees citizen gets instant token & printable receipt)
+    const newComplaint = LocalMunicipalityDB.submitComplaint(data);
+
+    // 2. Synchronize to Supabase Cloud Database
+    saveComplaintToSupabase(newComplaint).catch((err) => {
+      console.warn('Background Supabase complaint sync notice:', err);
+    });
+
+    // 3. Post to backend server if available
     try {
-      const res = await fetch(`${API_BASE}/complaints`, {
+      fetch(`${API_BASE}/complaints`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
-      });
+      }).catch(() => {});
+    } catch {}
 
-      if (res.ok) {
-        const json = await res.json();
-        if (json.complaint) {
-          // Add to local cache as well
-          const localComplaints = LocalMunicipalityDB.getComplaints();
-          localComplaints.unshift(json.complaint);
-          LocalMunicipalityDB.saveComplaints(localComplaints);
-          return json.complaint;
-        }
-      }
-    } catch (err) {
-      console.warn('API submission failed, falling back to local database:', err);
-    }
-
-    // Local fallback if server is offline
-    return LocalMunicipalityDB.submitComplaint(data);
+    return newComplaint;
   }
 
   /**
@@ -95,21 +112,34 @@ export class MunicipalityAPI {
     actorRole: UserRole,
     actorName: string
   ): Promise<boolean> {
+    // 1. Update in Local Storage
+    const success = LocalMunicipalityDB.updateComplaintStatus(
+      complaintId,
+      newStatus,
+      reason,
+      actorRole,
+      actorName
+    );
+
+    // 2. Synchronize to Supabase Cloud Database
+    const all = LocalMunicipalityDB.getComplaints();
+    const updated = all.find((c) => c.id === complaintId);
+    if (updated) {
+      updateComplaintStatusInSupabase(complaintId, newStatus, updated.statusHistory).catch(
+        (err) => console.warn('Supabase status sync notice:', err)
+      );
+    }
+
+    // 3. Notify backend server if running
     try {
-      const res = await fetch(`${API_BASE}/complaints/${complaintId}/status`, {
+      fetch(`${API_BASE}/complaints/${complaintId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newStatus, reason, actorRole, actorName }),
-      });
-      if (res.ok) {
-        // Also update local DB
-        LocalMunicipalityDB.updateComplaintStatus(complaintId, newStatus, reason, actorRole, actorName);
-        return true;
-      }
-    } catch (err) {
-      console.warn('Failed to update status on server:', err);
-    }
-    return LocalMunicipalityDB.updateComplaintStatus(complaintId, newStatus, reason, actorRole, actorName);
+      }).catch(() => {});
+    } catch {}
+
+    return success;
   }
 
   /**
@@ -123,26 +153,48 @@ export class MunicipalityAPI {
     actorRole: UserRole,
     actorName: string
   ): Promise<boolean> {
+    const success = LocalMunicipalityDB.assignComplaint(
+      complaintId,
+      department,
+      wardNumber,
+      officerName,
+      actorRole,
+      actorName
+    );
+
+    const all = LocalMunicipalityDB.getComplaints();
+    const updated = all.find((c) => c.id === complaintId);
+    if (updated) {
+      saveComplaintToSupabase(updated).catch(() => {});
+    }
+
     try {
-      const res = await fetch(`${API_BASE}/complaints/${complaintId}/assign`, {
+      fetch(`${API_BASE}/complaints/${complaintId}/assign`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ department, wardNumber, officerName, actorRole, actorName }),
-      });
-      if (res.ok) {
-        LocalMunicipalityDB.assignComplaint(complaintId, department, wardNumber, officerName, actorRole, actorName);
-        return true;
-      }
-    } catch (err) {
-      console.warn('Failed to assign on server:', err);
-    }
-    return LocalMunicipalityDB.assignComplaint(complaintId, department, wardNumber, officerName, actorRole, actorName);
+      }).catch(() => {});
+    } catch {}
+
+    return success;
   }
 
   /**
    * Get messages for a complaint
    */
   static async getMessages(complaintId: string, role: UserRole): Promise<ComplaintMessage[]> {
+    // 1. Try Supabase
+    try {
+      const supabaseMsgs = await getMessagesFromSupabase(complaintId);
+      if (supabaseMsgs && supabaseMsgs.length > 0) {
+        if (role === 'citizen') {
+          return supabaseMsgs.filter((m) => !m.isInternalNote);
+        }
+        return supabaseMsgs;
+      }
+    } catch {}
+
+    // 2. Try Backend
     try {
       const res = await fetch(`${API_BASE}/complaints/${complaintId}/messages`);
       if (res.ok) {
@@ -152,9 +204,9 @@ export class MunicipalityAPI {
         }
         return msgs;
       }
-    } catch (err) {
-      console.warn('Failed to fetch messages from server:', err);
-    }
+    } catch {}
+
+    // 3. Local Cache
     return LocalMunicipalityDB.getScopedMessages(complaintId, role);
   }
 
@@ -168,27 +220,42 @@ export class MunicipalityAPI {
     content: string,
     isInternalNote: boolean
   ): Promise<ComplaintMessage> {
+    const msg = LocalMunicipalityDB.addMessage(
+      complaintId,
+      senderRole,
+      senderName,
+      content,
+      isInternalNote
+    );
+
+    // Sync to Supabase
+    saveMessageToSupabase(msg).catch(() => {});
+
     try {
-      const res = await fetch(`${API_BASE}/complaints/${complaintId}/messages`, {
+      fetch(`${API_BASE}/complaints/${complaintId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ senderRole, senderName, content, isInternalNote }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        LocalMunicipalityDB.addMessage(complaintId, senderRole, senderName, content, isInternalNote);
-        return json.message;
-      }
-    } catch (err) {
-      console.warn('Failed to post message to server:', err);
-    }
-    return LocalMunicipalityDB.addMessage(complaintId, senderRole, senderName, content, isInternalNote);
+      }).catch(() => {});
+    } catch {}
+
+    return msg;
   }
 
   /**
    * Get Appointments
    */
   static async getAppointments(): Promise<Appointment[]> {
+    // 1. Try Supabase
+    try {
+      const supabaseApts = await getAppointmentsFromSupabase();
+      if (supabaseApts && supabaseApts.length > 0) {
+        LocalMunicipalityDB.saveAppointments(supabaseApts);
+        return supabaseApts;
+      }
+    } catch {}
+
+    // 2. Try Backend
     try {
       const res = await fetch(`${API_BASE}/appointments`);
       if (res.ok) {
@@ -196,9 +263,9 @@ export class MunicipalityAPI {
         LocalMunicipalityDB.saveAppointments(apts);
         return apts;
       }
-    } catch (err) {
-      console.warn('Failed to fetch appointments:', err);
-    }
+    } catch {}
+
+    // 3. Local Cache
     return LocalMunicipalityDB.getAppointments();
   }
 
@@ -214,22 +281,20 @@ export class MunicipalityAPI {
     purpose: string;
     relatedComplaintRef?: string;
   }): Promise<Appointment> {
+    const newApt = LocalMunicipalityDB.bookAppointment(data);
+
+    // Sync to Supabase
+    saveAppointmentToSupabase(newApt).catch(() => {});
+
     try {
-      const res = await fetch(`${API_BASE}/appointments`, {
+      fetch(`${API_BASE}/appointments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.appointment) {
-          return json.appointment;
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to book appointment on server:', err);
-    }
-    return LocalMunicipalityDB.bookAppointment(data);
+      }).catch(() => {});
+    } catch {}
+
+    return newApt;
   }
 
   /**
@@ -242,19 +307,28 @@ export class MunicipalityAPI {
     reviewedBy: string,
     actorRole: UserRole
   ): Promise<boolean> {
+    const success = LocalMunicipalityDB.updateAppointmentStatus(
+      aptId,
+      status,
+      secretariatNotes,
+      reviewedBy,
+      actorRole
+    );
+
+    const all = LocalMunicipalityDB.getAppointments();
+    const updated = all.find((a) => a.id === aptId);
+    if (updated) {
+      saveAppointmentToSupabase(updated).catch(() => {});
+    }
+
     try {
-      const res = await fetch(`${API_BASE}/appointments/${aptId}`, {
+      fetch(`${API_BASE}/appointments/${aptId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, secretariatNotes, reviewedBy }),
-      });
-      if (res.ok) {
-        LocalMunicipalityDB.updateAppointmentStatus(aptId, status, secretariatNotes, reviewedBy, actorRole);
-        return true;
-      }
-    } catch (err) {
-      console.warn('Failed to update appointment on server:', err);
-    }
-    return LocalMunicipalityDB.updateAppointmentStatus(aptId, status, secretariatNotes, reviewedBy, actorRole);
+      }).catch(() => {});
+    } catch {}
+
+    return success;
   }
 }
