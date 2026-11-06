@@ -276,3 +276,97 @@ export async function saveAppointmentToSupabase(apt: Appointment): Promise<boole
     return false;
   }
 }
+
+/**
+ * Test live connection to Supabase project
+ */
+export async function testSupabaseConnection(): Promise<{ success: boolean; url: string; error?: string }> {
+  try {
+    const { error } = await supabase.from('complaints').select('count', { count: 'exact', head: true });
+    if (error) {
+      return { success: false, url: SUPABASE_URL, error: error.message };
+    }
+    return { success: true, url: SUPABASE_URL };
+  } catch (err) {
+    return { success: false, url: SUPABASE_URL, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Staff Login via Supabase Auth or municipal administrator credentials
+ */
+export async function loginStaffWithSupabase(
+  identifier: string,
+  password: string
+): Promise<{ success: boolean; user?: { username: string; email?: string; role: string }; error?: string }> {
+  const cleanId = identifier.trim().toLowerCase();
+  const cleanPass = password.trim();
+
+  // 1. If identifier is an email, try Supabase Auth signInWithPassword
+  if (cleanId.includes('@')) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanId,
+        password: cleanPass,
+      });
+
+      if (!error && data?.user) {
+        const userRole = (data.user.user_metadata?.role as string) || 'admin';
+        return {
+          success: true,
+          user: {
+            username: data.user.email?.split('@')[0] || cleanId,
+            email: data.user.email,
+            role: userRole,
+          },
+        };
+      }
+    } catch (e) {
+      console.warn('Supabase auth attempt notice:', e);
+    }
+  }
+
+  // 2. Also accept official municipal email or admin credentials directly
+  if (
+    cleanId === 'admin' ||
+    cleanId === 'sakhuwananrkattigaupalika@gmail.com' ||
+    cleanId.startsWith('sakhuwananrkattigaupalika')
+  ) {
+    if (cleanPass === 'admin123' || cleanPass === 'admin') {
+      return {
+        success: true,
+        user: {
+          username: cleanId === 'admin' ? 'admin' : 'गाउँपालिका अधिकृत',
+          email: cleanId.includes('@') ? cleanId : 'sakhuwananrkattigaupalika@gmail.com',
+          role: 'admin',
+        },
+      };
+    }
+  }
+
+  // 3. Check server-side /api/auth/login if backend is active
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: cleanId, password: cleanPass }),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.authenticated) {
+        return {
+          success: true,
+          user: {
+            username: cleanId,
+            role: json.role || 'admin',
+          },
+        };
+      }
+    }
+  } catch {}
+
+  return {
+    success: false,
+    error: 'अमान्य इमेल वा पासवर्ड! कृपया सही विवरण प्रविष्ट गर्नुहोस्। (उदा: sakhuwananrkattigaupalika@gmail.com वा admin, पासवर्ड: admin123)',
+  };
+}

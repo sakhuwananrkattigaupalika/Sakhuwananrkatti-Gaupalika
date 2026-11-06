@@ -42,7 +42,10 @@ import {
   X,
   Camera,
   QrCode,
+  Database,
+  Cloud,
 } from 'lucide-react';
+import { saveComplaintToSupabase } from '../utils/supabaseClient';
 
 interface StaffDashboardViewProps {
   currentRole: UserRole;
@@ -289,6 +292,25 @@ export const StaffDashboardView: React.FC<StaffDashboardViewProps> = ({
     });
   };
 
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+
+  const handleSyncToSupabase = async () => {
+    setIsSyncingCloud(true);
+    let synced = 0;
+    try {
+      for (const c of complaints) {
+        const ok = await saveComplaintToSupabase(c);
+        if (ok) synced++;
+      }
+      setActionSuccessMsg(`सफलतापूर्वक ${synced} वटा गुनासोहरू Supabase क्लाउड डाटाबेसमा सिङ्क भयो!`);
+      setTimeout(() => setActionSuccessMsg(null), 4500);
+    } catch {
+      setActionSuccessMsg('Supabase क्लाउड सिङ्क गर्दा समस्या आयो।');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
   // Filter complaints
   const filteredComplaints = complaints.filter((c) => {
     if (filterWard !== 'all' && c.wardNumber !== Number(filterWard)) return false;
@@ -345,6 +367,16 @@ export const StaffDashboardView: React.FC<StaffDashboardViewProps> = ({
           >
             <QrCode className="w-4 h-4 text-teal-200" />
             <span>रसिद QR स्क्यान</span>
+          </button>
+
+          <button
+            onClick={handleSyncToSupabase}
+            disabled={isSyncingCloud}
+            className="px-3.5 py-2 bg-[#163A63] hover:bg-blue-900 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition shadow-xs disabled:opacity-50"
+            title="सबै गुनासोहरू Supabase क्लाउड डाटाबेसमा सिङ्क गर्नुहोस्"
+          >
+            <Cloud className={`w-4 h-4 text-teal-300 ${isSyncingCloud ? 'animate-bounce' : ''}`} />
+            <span>{isSyncingCloud ? 'सिङ्क हुँदैछ...' : 'Supabase सिङ्क'}</span>
           </button>
 
           <button

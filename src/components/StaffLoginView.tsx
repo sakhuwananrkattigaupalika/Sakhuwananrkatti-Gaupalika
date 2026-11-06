@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Lock, User, KeyRound, AlertCircle, ShieldCheck, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lock, Mail, User, KeyRound, AlertCircle, ShieldCheck, ArrowRight, Eye, EyeOff, Database } from 'lucide-react';
 import { Language } from '../types';
 import { translations } from '../i18n/translations';
 import { CivicSpinner, CivicActionLoader } from './LoadingAnimation';
+import { loginStaffWithSupabase, testSupabaseConnection } from '../utils/supabaseClient';
 import emblemSvg from '../assets/emblem-of-nepal.svg';
 
 interface StaffLoginViewProps {
@@ -16,57 +17,65 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
   onLoginSuccess,
   onCancel,
 }) => {
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('sakhuwananrkattigaupalika@gmail.com');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
 
   const t = translations[lang] || translations.ne;
+
+  useEffect(() => {
+    // Check live connection to Supabase project
+    testSupabaseConnection().then((res) => {
+      setSupabaseConnected(res.success);
+    });
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
-    const cleanUser = username.trim().toLowerCase();
+    const cleanId = identifier.trim().toLowerCase();
     const cleanPass = password.trim();
+
+    if (!cleanId || !cleanPass) {
+      setErrorMsg('कृपया इमेल र पासवर्ड दुवै प्रविष्ट गर्नुहोस्।');
+      return;
+    }
 
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: cleanUser, password: cleanPass }),
-      });
-
-      const data = await res.json();
+      // Authenticate via Supabase Auth or municipal credentials
+      const result = await loginStaffWithSupabase(cleanId, cleanPass);
       setIsLoading(false);
 
-      if (res.ok && data.authenticated) {
+      if (result.success && result.user) {
         onLoginSuccess({
-          username: cleanUser,
-          role: data.role || 'admin',
+          username: result.user.username,
+          role: result.user.role || 'admin',
         });
       } else {
         setErrorMsg(
-          data.error || 'अमान्य प्रयोगकर्ता नाम वा पासवर्ड! कृपया सही विवरण प्रविष्ट गर्नुहोस्।'
+          result.error || 'अमान्य इमेल वा पासवर्ड! कृपया सही विवरण प्रविष्ट गर्नुहोस्।'
         );
       }
     } catch {
-      // Offline fallback
-      setTimeout(() => {
-        if (cleanUser === 'admin' && cleanPass === 'admin123') {
-          setIsLoading(false);
-          onLoginSuccess({
-            username: 'admin',
-            role: 'admin',
-          });
-        } else {
-          setIsLoading(false);
-          setErrorMsg('अमान्य प्रयोगकर्ता नाम वा पासवर्ड! कृपया सही विवरण प्रविष्ट गर्नुहोस्।');
-        }
-      }, 400);
+      setIsLoading(false);
+      // Fallback
+      if (
+        (cleanId === 'admin' || cleanId === 'sakhuwananrkattigaupalika@gmail.com') &&
+        (cleanPass === 'admin123' || cleanPass === 'admin')
+      ) {
+        onLoginSuccess({
+          username: 'admin',
+          role: 'admin',
+        });
+      } else {
+        setErrorMsg('अमान्य इमेल वा पासवर्ड! कृपया सही विवरण प्रविष्ट गर्नुहोस्।');
+      }
     }
   };
 
@@ -96,12 +105,22 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
           </div>
         </div>
 
-        {/* Lock Warning Notice */}
-        <div className="bg-amber-50 border-b border-amber-200/80 px-5 py-2.5 text-[11px] text-amber-900 flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>
-            यो प्रणाली सखुवानान्कारकट्टी गाउँपालिकाका अधिकृत तथा कर्मचारीहरूका लागि मात्र सुरक्षित गरिएको छ।
-          </span>
+        {/* Supabase Connection Status Bar */}
+        <div className="bg-slate-50 border-b border-slate-200/80 px-5 py-2.5 text-[11px] flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-slate-700 font-medium">
+            <Database className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+            <span>Supabase क्लाउड डाटाबेस:</span>
+          </div>
+          {supabaseConnected === true ? (
+            <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              जडान सक्रिय (Connected)
+            </span>
+          ) : supabaseConnected === false ? (
+            <span className="font-semibold text-amber-700">अफलाइन मोड (Offline)</span>
+          ) : (
+            <span className="font-semibold text-slate-400">जाँचिँदै...</span>
+          )}
         </div>
 
         {/* Form Body */}
@@ -109,15 +128,15 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                प्रयोगकर्ता नाम (Username)
+                आधिकारिक इमेल वा प्रयोगकर्ता नाम (Email or Username)
               </label>
               <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
                   type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="प्रयोगकर्ता नाम (उदा. admin)"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  placeholder="sakhuwananrkattigaupalika@gmail.com वा admin"
                   required
                   autoComplete="username"
                   className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#163A63] focus:border-transparent font-medium"
@@ -176,6 +195,20 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
             </button>
           </form>
 
+          {/* Quick Authorized Credentials Hint */}
+          <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-3 text-xs text-blue-900 space-y-1">
+            <p className="font-bold flex items-center gap-1 text-[#163A63]">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>अधिकृत लगइन विवरण (Authorized Credentials):</span>
+            </p>
+            <p className="text-slate-600">
+              इमेल: <span className="font-mono font-bold text-slate-900 select-all">sakhuwananrkattigaupalika@gmail.com</span> वा <span className="font-mono font-bold text-slate-900 select-all">admin</span>
+            </p>
+            <p className="text-slate-600">
+              पासवर्ड: <span className="font-mono font-bold text-slate-900 select-all">admin123</span>
+            </p>
+          </div>
+
           {onCancel && (
             <div className="text-center pt-2">
               <button
@@ -193,9 +226,8 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
       {/* Staff Authentication Loading Animation */}
       <CivicActionLoader
         isOpen={isLoading}
-        title="प्रशासक क्रेडिसियल प्रमाणीकरण हुँदैछ"
-        stepMessage="सुरक्षित इन्क्रिप्सन जाँच तथा पहुँच अनुमति..."
-        lang={lang}
+        title="कर्मचारी प्रमाणीकरण हुँदैछ..."
+        stepMessage="सुरक्षित प्रणाली प्रमाणीकरण र अनुमति जाँच..."
       />
     </div>
   );
