@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import { Complaint, Language } from '../types';
-import { formatNepalDateTime } from './nepalTime';
+import { formatPdfNepalDateTime } from './nepalTime';
 
 /**
  * Generates and triggers download of an official Municipal Receipt PDF
@@ -99,7 +99,7 @@ export async function generateReceiptPDF(complaint: Complaint, lang: Language = 
     doc.text(value, 72, rowY + 5.5);
   };
 
-  drawRow('Submission Date (NPT)', formatNepalDateTime(complaint.createdAt, lang), y);
+  drawRow('Submission Date & Time', formatPdfNepalDateTime(complaint.createdAt), y);
   y += 8;
   drawRow('Ward Number', `Ward No. ${complaint.wardNumber} (Sakhuwanankarkatti)`, y);
   y += 8;
@@ -182,7 +182,7 @@ export async function generateReceiptPDF(complaint: Complaint, lang: Language = 
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
   doc.text('Sakhuwanankarkatti Citizen Grievance Handling System | Computer Generated Official Receipt', 14, 280);
-  doc.text(`Generated on: ${new Date().toISOString()}`, 196, 280, { align: 'right' });
+  doc.text(`Issued (NPT): ${formatPdfNepalDateTime(new Date().toISOString())}`, 196, 280, { align: 'right' });
 
   // Download PDF
   doc.save(`SKK-Receipt-${complaint.referenceNumber}.pdf`);

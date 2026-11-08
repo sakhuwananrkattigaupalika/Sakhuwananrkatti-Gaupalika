@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Complaint, Language } from '../types';
-import { formatNepalDateTime } from '../utils/nepalTime';
+import { formatNepalDateTime, formatPdfNepalDateTime } from '../utils/nepalTime';
 import { translations } from '../i18n/translations';
 import { generateReceiptPDF } from '../utils/pdfGenerator';
 import { Printer, X, ShieldAlert, CheckCircle, Copy, Check, Download, FileDown } from 'lucide-react';
@@ -131,9 +131,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           {/* Grievance Summary Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-4">
             <div className="p-2.5 bg-slate-50/70 rounded-lg">
-              <span className="text-slate-500 block font-medium">दर्ता मिति व समय:</span>
-              <span className="font-semibold text-slate-900">
-                {formatNepalDateTime(complaint.createdAt, lang)}
+              <span className="text-slate-500 block font-medium">दर्ता मिति तथा समय (Submission Time):</span>
+              <span className="font-bold text-slate-900 block mt-0.5">
+                {formatPdfNepalDateTime(complaint.createdAt)}
+              </span>
+              <span className="text-[11px] text-teal-700 block">
+                {formatNepalDateTime(complaint.createdAt, 'ne')}
               </span>
             </div>
 
@@ -188,7 +191,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           {/* Signoff / Seal Note */}
           <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
             <div>सखुवानान्कारकट्टी जनगुनासो डेस्क</div>
-            <div className="italic">कम्प्युटर सिर्जित आधिकारिक भरपाई</div>
+            <div className="italic">
+              कम्प्युटर सिर्जित आधिकारिक भरपाई (जारी: {formatPdfNepalDateTime(new Date().toISOString())})
+            </div>
           </div>
         </div>
 

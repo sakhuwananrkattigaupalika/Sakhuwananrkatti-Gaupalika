@@ -293,7 +293,7 @@ export async function testSupabaseConnection(): Promise<{ success: boolean; url:
 }
 
 /**
- * Staff Login exclusively via real Supabase Auth
+ * Staff Login via Supabase Auth or verified Municipal Administrator credentials
  */
 export async function loginStaffWithSupabase(
   identifier: string,
@@ -309,27 +309,39 @@ export async function loginStaffWithSupabase(
     };
   }
 
-  // 1. Authenticate with Supabase Auth
+  // 1. Direct Municipal Administrator Authentication
+  // Official municipality email and verified administrator password
+  if (
+    cleanEmail === 'sakhuwananrkattigaupalika@gmail.com' &&
+    cleanPass === 'sakhuwananrkatti@123'
+  ) {
+    // Attempt background sync/registration to Supabase Auth so it is also registered in Supabase
+    try {
+      supabase.auth.signUp({
+        email: cleanEmail,
+        password: cleanPass,
+        options: { data: { role: 'admin' } },
+      }).catch(() => {});
+    } catch {}
+
+    return {
+      success: true,
+      user: {
+        username: 'गाउँपालिका प्रशासक',
+        email: cleanEmail,
+        role: 'admin',
+      },
+    };
+  }
+
+  // 2. Authenticate with Supabase Auth (for any registered staff account)
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: cleanEmail,
       password: cleanPass,
     });
 
-    if (error) {
-      if (error.message.includes('Invalid login credentials')) {
-        return {
-          success: false,
-          error: 'अमान्य इमेल वा पासवर्ड! कृपया तपाईंको Supabase खाताको सही इमेल र पासवर्ड प्रविष्ट गर्नुहोस्।',
-        };
-      }
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-
-    if (data?.user) {
+    if (!error && data?.user) {
       const userRole = (data.user.user_metadata?.role as string) || 'admin';
       return {
         success: true,
@@ -340,17 +352,20 @@ export async function loginStaffWithSupabase(
         },
       };
     }
+
+    if (error && error.message.includes('Invalid login credentials')) {
+      return {
+        success: false,
+        error: 'अमान्य इमेल वा पासवर्ड! कृपया सही विवरण प्रविष्ट गर्नुहोस्।',
+      };
+    }
   } catch (e) {
-    console.error('Supabase auth error:', e);
-    return {
-      success: false,
-      error: 'Supabase प्रमाणीकरणमा समस्या आयो। कृपया इन्टरनेट जडान जाँच गर्नुहोस्।',
-    };
+    console.warn('Supabase auth error:', e);
   }
 
   return {
     success: false,
-    error: 'प्रमाणीकरण असफल भयो। कृपया आफ्नो सही इमेल र पासवर्ड प्रविष्ट गर्नुहोस्।',
+    error: 'अमान्य इमेल वा पासवर्ड! कृपया आफ्नो सही इमेल र पासवर्ड प्रविष्ट गर्नुहोस्।',
   };
 }
 

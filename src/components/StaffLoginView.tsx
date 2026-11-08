@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Lock, Mail, KeyRound, AlertCircle, ShieldCheck, ArrowRight, Eye, EyeOff, Database, CheckCircle, UserPlus, LogIn } from 'lucide-react';
+import React, { useState } from 'react';
+import { Lock, Mail, KeyRound, AlertCircle, ShieldCheck, ArrowRight, Eye, EyeOff, CheckCircle, UserPlus, LogIn } from 'lucide-react';
 import { Language } from '../types';
 import { translations } from '../i18n/translations';
 import { CivicSpinner, CivicActionLoader } from './LoadingAnimation';
-import { loginStaffWithSupabase, signUpStaffWithSupabase, testSupabaseConnection } from '../utils/supabaseClient';
+import { loginStaffWithSupabase, signUpStaffWithSupabase } from '../utils/supabaseClient';
 import emblemSvg from '../assets/emblem-of-nepal.svg';
 
 interface StaffLoginViewProps {
@@ -23,17 +23,9 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
   const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
 
   const t = translations[lang] || translations.ne;
-
-  useEffect(() => {
-    // Check live connection to Supabase project
-    testSupabaseConnection().then((res) => {
-      setSupabaseConnected(res.success);
-    });
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,24 +105,6 @@ export const StaffLoginView: React.FC<StaffLoginViewProps> = ({
             <Lock className="w-3.5 h-3.5 text-amber-400" />
             <span>Supabase Auth — सुरक्षित कर्मचारी लगइन</span>
           </div>
-        </div>
-
-        {/* Supabase Connection Status Bar */}
-        <div className="bg-slate-50 border-b border-slate-200/80 px-5 py-2.5 text-[11px] flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-slate-700 font-medium">
-            <Database className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-            <span>Supabase क्लाउड डाटाबेस:</span>
-          </div>
-          {supabaseConnected === true ? (
-            <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              जडान सक्रिय (Connected)
-            </span>
-          ) : supabaseConnected === false ? (
-            <span className="font-semibold text-amber-700">अफलाइन मोड (Offline)</span>
-          ) : (
-            <span className="font-semibold text-slate-400">जाँचिँदै...</span>
-          )}
         </div>
 
         {/* Switcher Tab: Sign In vs First-time Set Password */}
