@@ -103,4 +103,4 @@ CREATE POLICY "Public appointments update policy" ON public.appointments
 CREATE INDEX IF NOT EXISTS idx_complaints_ref ON public.complaints (reference_number);
 CREATE INDEX IF NOT EXISTS idx_complaints_status ON public.complaints (status);
 CREATE INDEX IF NOT EXISTS idx_messages_complaint ON public.messages (complaint_id);
-CREATE INDEX IF NOT EXISTS idx_appointments_ref ON public.appointments (appointment_ref);
+CREATE INDEX IF NOT EXISTS idx_appointments_ref ON public.appointments (reference_number);

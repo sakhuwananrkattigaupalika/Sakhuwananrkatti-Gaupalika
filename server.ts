@@ -766,6 +766,17 @@ app.get('/api/audit-logs', (_req, res) => {
   res.json(db.auditLogs || []);
 });
 
+// Direct Download endpoint for Netlify Drop / manual deployments
+app.get('/download-dist', (_req, res) => {
+  const zipPath = path.resolve(__dirname, 'public', 'dist.zip');
+  if (fs.existsSync(zipPath)) {
+    res.setHeader('Content-Type', 'application/zip');
+    res.download(zipPath, 'sakhuwananrkatti-dist.zip');
+  } else {
+    res.status(404).send('Build dist.zip not found');
+  }
+});
+
 // Mount Vite or serve static assets in production
 async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
